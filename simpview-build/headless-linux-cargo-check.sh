@@ -12,7 +12,7 @@ apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
   build-essential pkg-config git clang libclang-dev perl \
   libgtk-3-dev libpulse-dev libdbus-1-dev libpam0g-dev \
-  libxcb1-dev libx11-dev libxi-dev libxtst-dev libxrandr-dev libxdo-dev \
+  libxcb1-dev libxcb-randr0-dev libx11-dev libxi-dev libxtst-dev libxrandr-dev libxdo-dev \
   libasound2-dev libglib2.0-dev \
   libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
   libopus-dev libyuv-dev libvpx-dev libaom-dev > /tmp/apt.log 2>&1 || (tail -150 /tmp/apt.log; exit 1)
