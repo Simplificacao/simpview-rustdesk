@@ -51,7 +51,7 @@ jobs:
         shell: bash
         run: |
           CONFIG=libs/hbb_common/src/config.rs
-          SERVER=137.131.184.119
+          SERVER=remote.simplificacao.com
           PUBKEY='ZU0225ZMbqCTlUGyiu4v1ScTOZIpMklBvIqfo3ltXJw='
           APPNAME='SimpView'
           sed -i "s|rs-ny\.rustdesk\.com|${SERVER}|g" "$CONFIG"
