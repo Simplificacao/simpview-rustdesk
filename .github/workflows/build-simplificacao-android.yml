@@ -58,12 +58,22 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Install dependencies
+        # 18/11: travou 1 h duas vezes aqui (download do apt sem fim). Agora:
+        # tempo limite por tentativa, retentativa do apt e até 3 voltas.
+        timeout-minutes: 25
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake curl gcc-multilib git g++ g++-multilib libayatana-appindicator3-dev \
+          APT="-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Dpkg::Use-Pty=0"
+          PKGS="clang cmake curl gcc-multilib git g++ g++-multilib libayatana-appindicator3-dev \
                libasound2-dev libc6-dev libclang-dev libunwind-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
                libgtk-3-dev libpam0g-dev libpulse-dev libva-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-               libxdo-dev libxfixes-dev llvm-dev nasm ninja-build openjdk-17-jdk-headless pkg-config tree wget
+               libxdo-dev libxfixes-dev llvm-dev nasm ninja-build openjdk-17-jdk-headless pkg-config tree wget"
+          for t in 1 2 3; do
+            if timeout 420 sudo apt-get $APT update && timeout 600 sudo -E apt-get $APT install -y --no-install-recommends $PKGS; then exit 0; fi
+            echo "::warning::instalação dos pacotes falhou/travou (tentativa $t)"; sleep 20
+          done
+          exit 1
 
       - name: Checkout source code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
