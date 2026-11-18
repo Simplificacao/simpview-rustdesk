@@ -67,7 +67,7 @@ jobs:
           APT="-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Dpkg::Use-Pty=0"
           # só o que o runner do GitHub NÃO tem (Java 17, clang, cmake, git, curl já vêm instalados):
           # o espelho do apt estava a ~5 KB/s e só o openjdk (48 MB) travava a etapa
-          PKGS="nasm ninja-build pkg-config"
+          PKGS="nasm ninja-build pkg-config gcc-multilib g++-multilib libc6-dev"  # multilib: cabeçalhos que o hwcodec usa
           for t in 1 2 3; do
             if timeout 420 sudo apt-get $APT update && timeout 600 sudo -E apt-get $APT install -y --no-install-recommends $PKGS; then exit 0; fi
             echo "::warning::instalação dos pacotes falhou/travou (tentativa $t)"; sleep 20
