@@ -65,10 +65,9 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           APT="-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Dpkg::Use-Pty=0"
-          PKGS="clang cmake curl gcc-multilib git g++ g++-multilib libayatana-appindicator3-dev \
-               libasound2-dev libc6-dev libclang-dev libunwind-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-               libgtk-3-dev libpam0g-dev libpulse-dev libva-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-               libxdo-dev libxfixes-dev llvm-dev nasm ninja-build openjdk-17-jdk-headless pkg-config tree wget"
+          # só o que o runner do GitHub NÃO tem (Java 17, clang, cmake, git, curl já vêm instalados):
+          # o espelho do apt estava a ~5 KB/s e só o openjdk (48 MB) travava a etapa
+          PKGS="nasm ninja-build pkg-config"
           for t in 1 2 3; do
             if timeout 420 sudo apt-get $APT update && timeout 600 sudo -E apt-get $APT install -y --no-install-recommends $PKGS; then exit 0; fi
             echo "::warning::instalação dos pacotes falhou/travou (tentativa $t)"; sleep 20
@@ -171,10 +170,9 @@ jobs:
       - name: Build APK
         shell: bash
         env:
-          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          export PATH=/usr/lib/jvm/java-17-openjdk-amd64/bin:$PATH
+          export JAVA_HOME="${JAVA_HOME_17_X64:-/usr/lib/jvm/temurin-17-jdk-amd64}"; export PATH="$JAVA_HOME/bin:$PATH"; java -version
           sed -i "s/org.gradle.jvmargs=-Xmx1024M/org.gradle.jvmargs=-Xmx2g/g" ./flutter/android/gradle.properties
           sed -i "s/signingConfigs.release/signingConfigs.debug/g" ./flutter/android/app/build.gradle
           J=./flutter/android/app/src/main/jniLibs/${{ matrix.job.abi }}
