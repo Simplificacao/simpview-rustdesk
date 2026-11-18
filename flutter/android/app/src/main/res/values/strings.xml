@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">RustDesk</string>
-    <string name="accessibility_service_description">Allow other devices to control your phone using virtual touch, when RustDesk screen sharing is established</string>
+    <string name="app_name">SIMP View</string>
+    <string name="accessibility_service_description">Deixa o técnico da Simplificação tocar na sua tela durante o suporte do SIMP View. Só funciona enquanto você estiver compartilhando a tela.</string>
 </resources>

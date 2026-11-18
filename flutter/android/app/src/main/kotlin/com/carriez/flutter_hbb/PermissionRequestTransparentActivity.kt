@@ -18,7 +18,12 @@ class PermissionRequestTransparentActivity: Activity() {
             ACT_REQUEST_MEDIA_PROJECTION -> {
                 val mediaProjectionManager =
                     getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                val intent = mediaProjectionManager.createScreenCaptureIntent()
+                // SIMP View 18/11: no Android 14+ pede só a TELA INTEIRA (sem "Compartilhar um app",
+                // que deixava o técnico vendo só um app)
+                val intent = if (Build.VERSION.SDK_INT >= 34)
+                    mediaProjectionManager.createScreenCaptureIntent(
+                        android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay())
+                else mediaProjectionManager.createScreenCaptureIntent()
                 startActivityForResult(intent, REQ_REQUEST_MEDIA_PROJECTION)
             }
             else -> finish()

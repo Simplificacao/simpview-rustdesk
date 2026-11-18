@@ -8,6 +8,7 @@ import '../../common/widgets/chat_page.dart';
 import '../../models/platform_model.dart';
 import '../../models/state_model.dart';
 import 'connection_page.dart';
+import 'simp_suporte_page.dart';
 
 abstract class PageShape extends Widget {
   final String title = "";
@@ -26,6 +27,9 @@ class HomePage extends StatefulWidget {
 
 class HomePageState extends State<HomePage> {
   var _selectedIndex = 0;
+  // SIMP View 18/11: no Android abre na tela simples "Iniciar suporte"; as abas antigas ficam em Opções avançadas
+  bool _simpAvancado = false;
+  bool get _simpSimples => isAndroid && !bind.isOutgoingOnly() && !_simpAvancado;
   int get selectedIndex => _selectedIndex;
   final List<PageShape> _pages = [];
   int _chatPageTabIndex = -1;
@@ -61,8 +65,38 @@ class HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_simpSimples) {
+      return Scaffold(
+        appBar: AppBar(
+          centerTitle: true,
+          title: Text(bind.mainGetAppNameSync()),
+          actions: [
+            PopupMenuButton<int>(
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 1, child: Text('Opções avançadas'))
+              ],
+              onSelected: (_) => setState(() {
+                _simpAvancado = true;
+                _selectedIndex = 0;
+              }),
+            ),
+          ],
+        ),
+        body: SimpSuportePage(
+            onChat: () => setState(() {
+                  _simpAvancado = true;
+                  if (_chatPageTabIndex >= 0) _selectedIndex = _chatPageTabIndex;
+                })),
+      );
+    }
     return WillPopScope(
         onWillPop: () async {
+          if (isAndroid && _simpAvancado) {
+            setState(() {
+              _simpAvancado = false;
+            });
+            return false;
+          }
           if (_selectedIndex != 0) {
             setState(() {
               _selectedIndex = 0;
@@ -76,6 +110,14 @@ class HomePageState extends State<HomePage> {
           // backgroundColor: MyTheme.grayBg,
           appBar: AppBar(
             centerTitle: true,
+            leading: isAndroid && _simpAvancado
+                ? IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    tooltip: 'Voltar ao suporte',
+                    onPressed: () => setState(() {
+                          _simpAvancado = false;
+                        }))
+                : null,
             title: appTitle(),
             actions: _pages.elementAt(_selectedIndex).appBarActions,
           ),
