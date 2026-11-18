@@ -339,6 +339,11 @@ class MainService : Service() {
             intent.getParcelableExtra<Intent>(EXT_MEDIA_PROJECTION_RES_INTENT)?.let {
                 mediaProjection =
                     mediaProjectionManager.getMediaProjection(Activity.RESULT_OK, it)
+                // SIMP View 18/11: no Android 14+ a autorização vale para criar a tela virtual
+                // NA HORA. Criar só quando o técnico conecta (minutos depois) faz o Android pedir
+                // de novo no celular e, sem resposta, parar a captura ("aguardando imagem").
+                // Cria já, pausada (sem surface); a conexão só faz setSurface (reuseVirtualDisplay).
+                mediaProjection?.let { mp -> simpPreparaTelaVirtual(mp) }
                 checkMediaPermission()
                 _isReady = true
             } ?: let {
@@ -352,6 +357,41 @@ class MainService : Service() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         updateScreenInfo(newConfig.orientation)
+    }
+
+    // SIMP View 18/11: callback (obrigatório no Android 14+) + tela virtual criada já na autorização.
+    private fun simpPreparaTelaVirtual(mp: MediaProjection) {
+        try {
+            mp.registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    Log.w(logTag, "SIMP: o Android parou o compartilhamento de tela")
+                    Handler(Looper.getMainLooper()).post {
+                        if (mediaProjection === mp) {
+                            stopCapture()
+                            virtualDisplay?.release()
+                            virtualDisplay = null
+                            mediaProjection = null
+                            _isReady = false
+                            checkMediaPermission()
+                        }
+                    }
+                }
+            }, Handler(Looper.getMainLooper()))
+        } catch (e: Exception) {
+            Log.w(logTag, "SIMP: registerCallback falhou: $e")
+        }
+        if (!reuseVirtualDisplay || virtualDisplay != null) return
+        try {
+            updateScreenInfo(resources.configuration.orientation)
+            virtualDisplay = mp.createVirtualDisplay(
+                "RustDeskVD",
+                SCREEN_INFO.width, SCREEN_INFO.height, SCREEN_INFO.dpi, VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                null, null, null
+            )
+            Log.d(logTag, "SIMP: tela virtual criada na autorização (pausada)")
+        } catch (e: Exception) {
+            Log.w(logTag, "SIMP: não criou a tela virtual na autorização: $e")
+        }
     }
 
     private fun requestMediaProjection() {
