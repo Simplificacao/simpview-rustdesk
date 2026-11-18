@@ -172,7 +172,13 @@ jobs:
           cp ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${{ matrix.job.libcxx }}/libc++_shared.so "$J/"
           cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so "$J/librustdesk.so"
           pushd flutter
-          flutter build apk --release --target-platform ${{ matrix.job.platform }} --split-per-abi
+          # 18/11: o Maven Central devolveu 429 (Too Many Requests) ao baixar as
+          # dependências do Gradle -- tenta de novo até 3 vezes, com espera.
+          for t in 1 2 3; do
+            flutter build apk --release --target-platform ${{ matrix.job.platform }} --split-per-abi && break
+            [ "$t" = 3 ] && exit 1
+            echo "::warning::build do APK falhou (tentativa $t); nova tentativa em $((t*60)) s"; sleep $((t*60))
+          done
           popd
           mkdir -p signed-apk
           mv flutter/build/app/outputs/flutter-apk/app-${{ matrix.job.abi }}-release.apk signed-apk/SimpView-${{ env.VERSION }}-${{ matrix.job.arch }}.apk
