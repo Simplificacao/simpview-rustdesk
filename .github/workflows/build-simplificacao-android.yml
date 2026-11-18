@@ -167,6 +167,23 @@ jobs:
           cargo install cargo-ndk --version ${{ env.CARGO_NDK_VERSION }} --locked
           ./flutter/${{ matrix.job.ndk }}
 
+      # 18/11: guarda a biblioteca desta arquitetura para o APK universal (Android 16
+      # de 32 bits recusava o APK só arm64 com "App não instalado")
+      - name: Guardar bibliotecas para o APK universal
+        shell: bash
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          mkdir -p jni/${{ matrix.job.abi }}
+          cp ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${{ matrix.job.libcxx }}/libc++_shared.so jni/${{ matrix.job.abi }}/
+          cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so jni/${{ matrix.job.abi }}/librustdesk.so
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: jni-${{ matrix.job.abi }}
+          path: jni/
+          retention-days: 3
+
       - name: Build APK
         shell: bash
         env:
@@ -211,5 +228,95 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: SimpView-${{ env.VERSION }}-${{ matrix.job.arch }}.apk
+          path: ${{ steps.assina.outputs.signedReleaseFile }}
+          retention-days: 30
+
+  # 18/11: APK UNIVERSAL (32 + 64 bits) -- um arquivo só para qualquer aparelho ARM.
+  # Junta as bibliotecas que os dois jobs acima compilaram; não compila Rust de novo.
+  build-universal:
+    needs: [generate-bridge, build-android]
+    name: SIMP View android universal
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+
+      - name: Android name & id (SIMP View)
+        shell: bash
+        run: |
+          G=flutter/android/app/build.gradle
+          M=flutter/android/app/src/main/AndroidManifest.xml
+          sed -i "s|applicationId \"com.carriez.flutter_hbb\"|applicationId \"${APP_ID}\"|" "$G"
+          sed -i "s|android:label=\"RustDesk\"|android:label=\"${APP_LABEL}\"|" "$M"
+          sed -i "s|android:label=\"RustDesk Input\"|android:label=\"${APP_LABEL} - controle remoto\"|" "$M"
+          grep -q "applicationId \"${APP_ID}\"" "$G" || { echo "ERRO: applicationId NAO aplicado"; exit 1; }
+
+      - name: Install flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.ANDROID_FLUTTER_VERSION }}
+
+      - name: Patch flutter
+        run: |
+          cd $(dirname $(dirname $(which flutter)))
+          [[ "3.24.5" == ${{env.ANDROID_FLUTTER_VERSION}} ]] && git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
+
+      - name: Restore bridge files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bridge-artifact
+          path: ./
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: jni-arm64-v8a
+          path: flutter/android/app/src/main/jniLibs/
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: jni-armeabi-v7a
+          path: flutter/android/app/src/main/jniLibs/
+
+      - name: Build APK universal
+        shell: bash
+        run: |
+          export JAVA_HOME="${JAVA_HOME_17_X64:-/usr/lib/jvm/temurin-17-jdk-amd64}"; export PATH="$JAVA_HOME/bin:$PATH"
+          ls -la flutter/android/app/src/main/jniLibs/*/
+          test -f flutter/android/app/src/main/jniLibs/arm64-v8a/librustdesk.so && test -f flutter/android/app/src/main/jniLibs/armeabi-v7a/librustdesk.so || { echo "ERRO: faltam as bibliotecas"; exit 1; }
+          sed -i "s/org.gradle.jvmargs=-Xmx1024M/org.gradle.jvmargs=-Xmx2g/g" ./flutter/android/gradle.properties
+          sed -i "s/signingConfigs.release/signingConfigs.debug/g" ./flutter/android/app/build.gradle
+          pushd flutter
+          for t in 1 2 3; do
+            flutter build apk --release --target-platform android-arm,android-arm64 && break
+            [ "$t" = 3 ] && exit 1
+            echo "::warning::build do APK falhou (tentativa $t); nova tentativa em $((t*60)) s"; sleep $((t*60))
+          done
+          popd
+          mkdir -p signed-apk
+          mv flutter/build/app/outputs/flutter-apk/app-release.apk signed-apk/SimpView-${{ env.VERSION }}-universal.apk
+
+      - name: Setup sign tool version variable
+        shell: bash
+        run: echo "ANDROID_SIGN_TOOL_VERSION=$(ls /usr/local/lib/android/sdk/build-tools/ | tail -n 1)" >> $GITHUB_ENV
+
+      - uses: r0adkll/sign-android-release@349ebdef58775b1e0d8099458af0816dc79b6407 # v1
+        name: Sign APK universal (assinatura do SIMP View)
+        id: assina
+        with:
+          releaseDirectory: ./signed-apk
+          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
+          alias: ${{ secrets.ANDROID_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: ${{ env.ANDROID_SIGN_TOOL_VERSION }}
+
+      - name: Upload APK universal
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: SimpView-${{ env.VERSION }}-universal.apk
           path: ${{ steps.assina.outputs.signedReleaseFile }}
           retention-days: 30
