@@ -190,6 +190,26 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           export JAVA_HOME="${JAVA_HOME_17_X64:-/usr/lib/jvm/temurin-17-jdk-amd64}"; export PATH="$JAVA_HOME/bin:$PATH"; java -version
+          # 19/11: o Maven Central segue devolvendo 429 ao runner (falhou 2x no arm64) --
+          # o Gradle usa o espelho do Google, inclusive no build :gradle do Flutter.
+          mkdir -p ~/.gradle/init.d
+          cat > ~/.gradle/init.d/espelho-maven.gradle <<'GRADLE'
+          def espelho = 'https://maven-central.storage-download.googleapis.com/maven2/'
+          def trocar = { repos ->
+            repos.configureEach { r ->
+              if (r instanceof MavenArtifactRepository) {
+                def u = r.url.toString()
+                if (u.contains('repo.maven.apache.org') || u.contains('repo1.maven.org')) { r.url = espelho }
+              }
+            }
+          }
+          beforeSettings { st ->
+            trocar(st.pluginManagement.repositories)
+            trocar(st.buildscript.repositories)
+            trocar(st.dependencyResolutionManagement.repositories)
+          }
+          allprojects { trocar(buildscript.repositories); trocar(repositories) }
+          GRADLE
           sed -i "s/org.gradle.jvmargs=-Xmx1024M/org.gradle.jvmargs=-Xmx2g/g" ./flutter/android/gradle.properties
           sed -i "s/signingConfigs.release/signingConfigs.debug/g" ./flutter/android/app/build.gradle
           J=./flutter/android/app/src/main/jniLibs/${{ matrix.job.abi }}
@@ -284,6 +304,25 @@ jobs:
         shell: bash
         run: |
           export JAVA_HOME="${JAVA_HOME_17_X64:-/usr/lib/jvm/temurin-17-jdk-amd64}"; export PATH="$JAVA_HOME/bin:$PATH"
+          # espelho do Maven Central (ver Build APK acima)
+          mkdir -p ~/.gradle/init.d
+          cat > ~/.gradle/init.d/espelho-maven.gradle <<'GRADLE'
+          def espelho = 'https://maven-central.storage-download.googleapis.com/maven2/'
+          def trocar = { repos ->
+            repos.configureEach { r ->
+              if (r instanceof MavenArtifactRepository) {
+                def u = r.url.toString()
+                if (u.contains('repo.maven.apache.org') || u.contains('repo1.maven.org')) { r.url = espelho }
+              }
+            }
+          }
+          beforeSettings { st ->
+            trocar(st.pluginManagement.repositories)
+            trocar(st.buildscript.repositories)
+            trocar(st.dependencyResolutionManagement.repositories)
+          }
+          allprojects { trocar(buildscript.repositories); trocar(repositories) }
+          GRADLE
           ls -la flutter/android/app/src/main/jniLibs/*/
           test -f flutter/android/app/src/main/jniLibs/arm64-v8a/librustdesk.so && test -f flutter/android/app/src/main/jniLibs/armeabi-v7a/librustdesk.so || { echo "ERRO: faltam as bibliotecas"; exit 1; }
           sed -i "s/org.gradle.jvmargs=-Xmx1024M/org.gradle.jvmargs=-Xmx2g/g" ./flutter/android/gradle.properties
