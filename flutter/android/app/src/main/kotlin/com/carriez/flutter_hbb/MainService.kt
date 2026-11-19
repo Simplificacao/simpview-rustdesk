@@ -394,6 +394,31 @@ class MainService : Service() {
         }
     }
 
+    // SIMP View 19/11: a tela virtual (criada pausada na autorização) só manda quadro
+    // quando algo muda na tela. Religada na conexão com o celular parado, a imagem só
+    // chegava na próxima mudança -- em geral o relógio virando o minuto (até 60 s de
+    // "aguardando imagem"; medido no Galaxy A06: conexão 17:38:38, 1º quadro 17:39:00).
+    // Mudar o tamanho por um instante e voltar obriga o Android a desenhar de novo.
+    private fun simpForcaPrimeiroQuadro(vd: VirtualDisplay) {
+        val w = SCREEN_INFO.width
+        val h = SCREEN_INFO.height
+        val dpi = SCREEN_INFO.dpi
+        try {
+            vd.resize(w, h - 2, dpi)
+        } catch (e: Exception) {
+            Log.w(logTag, "SIMP: forçar quadro (resize) falhou: $e")
+            return
+        }
+        Handler(Looper.getMainLooper()).postDelayed({
+            try {
+                if (virtualDisplay === vd) vd.resize(w, h, dpi)
+                Log.d(logTag, "SIMP: primeiro quadro forçado")
+            } catch (e: Exception) {
+                Log.w(logTag, "SIMP: voltar o tamanho falhou: $e")
+            }
+        }, 150)
+    }
+
     private fun requestMediaProjection() {
         val intent = Intent(this, PermissionRequestTransparentActivity::class.java).apply {
             action = ACT_REQUEST_MEDIA_PROJECTION
@@ -578,6 +603,7 @@ class MainService : Service() {
             virtualDisplay?.let {
                 it.resize(SCREEN_INFO.width, SCREEN_INFO.height, SCREEN_INFO.dpi)
                 it.setSurface(s)
+                simpForcaPrimeiroQuadro(it)
             } ?: let {
                 virtualDisplay = mp.createVirtualDisplay(
                     "RustDeskVD",
